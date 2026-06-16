@@ -1,0 +1,187 @@
+import datetime
+from typing import List, Optional
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import get_db, engine, Base
+from app.models import Survey
+from app.schemas import SurveyCreate, SurveyUpdate, SurveyResponse
+
+# Automatically bootstrap database tables on startup if migrations haven't run
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    description="Backend API for storing and managing Household Welfare Surveys."
+)
+
+# CORS middleware configuration
+origins = settings.CORS_ORIGINS
+if isinstance(origins, str):
+    origins = [origins]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def map_schema_to_model_fields(payload: SurveyCreate) -> dict:
+    """
+    Maps incoming Pydantic payload data into model attributes and parses date timestamps.
+    """
+    submitted_at_dt = None
+    if payload.submitted_at:
+        try:
+            # standard ISO format parsing (e.g. 2026-06-12T05:45:12.123Z)
+            iso_str = payload.submitted_at.replace("Z", "+00:00")
+            submitted_at_dt = datetime.datetime.fromisoformat(iso_str)
+        except Exception:
+            submitted_at_dt = datetime.datetime.utcnow()
+    else:
+        submitted_at_dt = datetime.datetime.utcnow()
+
+    return {
+        "first_name": payload.firstName,
+        "last_name": payload.lastName,
+        "primary_mobile": payload.primaryMobile,
+        "dob": payload.dob,
+        "surveyor_name": payload.surveyorName,
+        "surveyor_id": payload.surveyorId,
+        "survey_language": payload.survey_language,
+        "submitted_at": submitted_at_dt,
+        "data": payload.model_dump(),  # Convert entire validated payload to dict for JSONB
+    }
+
+# ── API ROUTES ──────────────────────────────────────────────────────────────
+
+@app.post("/submit", response_model=SurveyResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/surveys", response_model=SurveyResponse, status_code=status.HTTP_201_CREATED)
+def submit_survey(payload: SurveyCreate, db: Session = Depends(get_db)):
+    """
+    Submits a survey response. Validates JSON payload, indexes key columns, and
+    saves complete document in JSONB column.
+    """
+    try:
+        db_fields = map_schema_to_model_fields(payload)
+        db_survey = Survey(**db_fields)
+        db.add(db_survey)
+        db.commit()
+        db.refresh(db_survey)
+        return db_survey
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while saving the survey: {str(e)}"
+        )
+
+@app.get("/records", response_model=List[SurveyResponse])
+@app.get("/api/surveys", response_model=List[SurveyResponse])
+def get_records(
+    first_name: Optional[str] = None,
+    primary_mobile: Optional[str] = None,
+    surveyor_id: Optional[str] = None,
+    limit: int = 100,
+    skip: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves survey responses from the database. Supports search filtering on top-level columns.
+    """
+    query = db.query(Survey)
+    if first_name:
+        query = query.filter(Survey.first_name.ilike(f"%{first_name}%"))
+    if primary_mobile:
+        query = query.filter(Survey.primary_mobile == primary_mobile)
+    if surveyor_id:
+        query = query.filter(Survey.surveyor_id == surveyor_id)
+        
+    records = query.order_by(Survey.submitted_at.desc()).offset(skip).limit(limit).all()
+    return records
+
+@app.get("/records/{record_id}", response_model=SurveyResponse)
+def get_record(record_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieves a single survey record by ID.
+    """
+    record = db.query(Survey).filter(Survey.id == record_id).first()
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey record with ID {record_id} not found"
+        )
+    return record
+
+@app.put("/records/{record_id}", response_model=SurveyResponse)
+def update_record(record_id: int, payload: SurveyUpdate, db: Session = Depends(get_db)):
+    """
+    Updates an existing survey record.
+    """
+    db_record = db.query(Survey).filter(Survey.id == record_id).first()
+    if not db_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey record with ID {record_id} not found"
+        )
+    
+    # Update individual indexed columns if provided
+    if payload.firstName is not None:
+        db_record.first_name = payload.firstName
+    if payload.lastName is not None:
+        db_record.last_name = payload.lastName
+    if payload.primaryMobile is not None:
+        db_record.primary_mobile = payload.primaryMobile
+    if payload.dob is not None:
+        db_record.dob = payload.dob
+    if payload.surveyorName is not None:
+        db_record.surveyor_name = payload.surveyorName
+    if payload.surveyorId is not None:
+        db_record.surveyor_id = payload.surveyorId
+    if payload.survey_language is not None:
+        db_record.survey_language = payload.survey_language
+        
+    # Update entire JSON document if provided
+    if payload.data is not None:
+        db_record.data = payload.data
+        
+    try:
+        db.commit()
+        db.refresh(db_record)
+        return db_record
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while updating the survey: {str(e)}"
+        )
+
+@app.delete("/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_record(record_id: int, db: Session = Depends(get_db)):
+    """
+    Deletes a survey record by ID.
+    """
+    db_record = db.query(Survey).filter(Survey.id == record_id).first()
+    if not db_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey record with ID {record_id} not found"
+        )
+    try:
+        db.delete(db_record)
+        db.commit()
+        return None
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while deleting the survey: {str(e)}"
+        )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host=settings.HOST, port=settings.PORT, reload=True)
