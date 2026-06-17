@@ -154,3 +154,64 @@ class SurveyResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- RAG & Welfare Scheme schemas ---
+
+class RawTextIngest(BaseModel):
+    title: str
+    content: str
+
+class UrlIngest(BaseModel):
+    title: str
+    url: str
+
+class SchemeCreate(BaseModel):
+    scheme_name: str
+    state: str
+    category: str
+    description: str
+    benefits: Dict[str, Any]
+    eligibility_rules: Dict[str, Any]
+    required_documents: List[str]
+    application_process: str
+    source_page: Optional[int] = 1
+    verification_status: Optional[str] = "UNVERIFIED"
+
+class SchemeUpdate(BaseModel):
+    scheme_name: Optional[str] = None
+    state: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    benefits: Optional[Dict[str, Any]] = None
+    eligibility_rules: Optional[Dict[str, Any]] = None
+    required_documents: Optional[List[str]] = None
+    application_process: Optional[str] = None
+    source_page: Optional[int] = None
+    verification_status: Optional[str] = None
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    profile: Dict[str, Any]
+    question: str
+    history: Optional[List[ChatMessage]] = []
+
+class EligibleSchemeRecommendation(BaseModel):
+    scheme_name: str
+    eligibility_status: str
+    eligibility_score: int
+    why_recommended: str
+    missing_documents: List[str]
+    next_steps: str
+    source_page: int
+    verification_status: str
+
+class ChatResponse(BaseModel):
+    response: str
+    recommendations: List[EligibleSchemeRecommendation]
+    retrieved_sources: List[Dict[str, Any]]
+

@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db, engine, Base
-from app.models import Survey
+from app.models import Survey, KnowledgeDocument, SchemeRegistry, SchemeChunk, ChatLog
 from app.schemas import SurveyCreate, SurveyUpdate, SurveyResponse
+from app.api.routes import router as api_router
 
 # Automatically bootstrap database tables on startup if migrations haven't run
 Base.metadata.create_all(bind=engine)
@@ -16,6 +17,9 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend API for storing and managing Household Welfare Surveys."
 )
+
+app.include_router(api_router, tags=["RAG & Welfare Intelligence"])
+
 
 # CORS middleware configuration
 origins = settings.CORS_ORIGINS
@@ -184,4 +188,4 @@ def delete_record(record_id: int, db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host=settings.HOST, port=settings.PORT, reload=True)
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=False)

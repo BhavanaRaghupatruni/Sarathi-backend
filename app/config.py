@@ -9,6 +9,16 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000"]
     PORT: int = 4000
     HOST: str = "127.0.0.1"
+    LM_STUDIO_URL: str = "http://localhost:1234/v1/chat/completions"
+    LLM_PROVIDER: str = "lmstudio"
+    OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    AWS_BEDROCK_MODEL: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
