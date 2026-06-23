@@ -1,6 +1,8 @@
 import datetime
+import os
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -38,6 +40,11 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend API for storing and managing Household Welfare Surveys."
 )
+
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Custom Authorization Middleware for RBAC
 class AuthorizationMiddleware(BaseHTTPMiddleware):

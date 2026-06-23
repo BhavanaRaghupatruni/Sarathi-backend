@@ -11,6 +11,7 @@ from app.models.citizen_timeline import CitizenTimeline
 from app.models.hub import Hub
 from app.models.volunteer_profile import VolunteerProfile
 from app.models.welfare_case import WelfareCase
+from app.models.case_timeline import CaseTimeline
 
 __all__ = [
     "Survey",
@@ -28,6 +29,7 @@ __all__ = [
     "VolunteerProfile",
     "WelfareCase",
     "SchemeVersionHistory",
+    "CaseTimeline",
 ]
 
 

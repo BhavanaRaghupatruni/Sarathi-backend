@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -405,20 +405,52 @@ class VolunteerProfileResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class CaseTimelineNoteCreate(BaseModel):
+    note: str
+
+class CaseTimelineResponse(BaseModel):
+    id: int
+    case_id: int
+    event_type: str
+    description: str
+    note: Optional[str] = None
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class WelfareCaseCreate(BaseModel):
     citizen_id: int
     volunteer_id: Optional[int] = None
     title: str
     description: Optional[str] = None
-    status: Optional[str] = "Unassigned"
+    status: Optional[str] = "OPEN"
     upcoming_visit_date: Optional[datetime] = None
     follow_up_tasks: List[Dict[str, Any]] = []
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: Optional[str]) -> Optional[str]:
+        valid_statuses = {"OPEN", "ASSIGNED", "IN_PROGRESS", "RESOLVED"}
+        if value is not None and value not in valid_statuses:
+            raise ValueError(f"Status must be one of {valid_statuses}")
+        return value
 
 class WelfareCaseUpdate(BaseModel):
     volunteer_id: Optional[int] = None
     status: Optional[str] = None
     upcoming_visit_date: Optional[datetime] = None
     follow_up_tasks: Optional[List[Dict[str, Any]]] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: Optional[str]) -> Optional[str]:
+        valid_statuses = {"OPEN", "ASSIGNED", "IN_PROGRESS", "RESOLVED"}
+        if value is not None and value not in valid_statuses:
+            raise ValueError(f"Status must be one of {valid_statuses}")
+        return value
 
 class WelfareCaseResponse(BaseModel):
     id: int
@@ -430,6 +462,7 @@ class WelfareCaseResponse(BaseModel):
     status: str
     upcoming_visit_date: Optional[datetime] = None
     follow_up_tasks: List[Dict[str, Any]] = []
+    timeline: List[CaseTimelineResponse] = []
     created_at: datetime
     updated_at: datetime
 

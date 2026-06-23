@@ -12,6 +12,13 @@ from app.services.auth import hash_password
 # Use an in-memory SQLite database for testing the CRM logic
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_vol_ops_temp.db"
 
+import os
+if os.path.exists("test_vol_ops_temp.db"):
+    try:
+        os.remove("test_vol_ops_temp.db")
+    except Exception:
+        pass
+
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -157,7 +164,7 @@ def test_volunteer_and_hub_operations():
     }, headers=headers_admin)
     assert res.status_code == 201, res.text
     case1 = res.json()
-    assert case1["status"] == "Assigned"
+    assert case1["status"] == "ASSIGNED"
     assigned_vol_id_1 = case1["volunteer_id"]
     assert assigned_vol_id_1 in [vol1_id, vol2_id]
     
@@ -172,7 +179,7 @@ def test_volunteer_and_hub_operations():
     }, headers=headers_admin)
     assert res.status_code == 201, res.text
     case2 = res.json()
-    assert case2["status"] == "Assigned"
+    assert case2["status"] == "ASSIGNED"
     assigned_vol_id_2 = case2["volunteer_id"]
     assert assigned_vol_id_2 in [vol1_id, vol2_id]
     assert assigned_vol_id_2 != assigned_vol_id_1, "Load balancer failed! Assigned to same volunteer instead of the idle one."
@@ -187,7 +194,7 @@ def test_volunteer_and_hub_operations():
     }, headers=headers_admin)
     assert res.status_code == 201, res.text
     case3 = res.json()
-    assert case3["status"] == "Assigned"
+    assert case3["status"] == "ASSIGNED"
     assert case3["volunteer_id"] == vol3_id, "Geographical routing failed! Should match Medchal volunteer."
     print("✓ Geographical routing successful!")
 
@@ -198,7 +205,7 @@ def test_volunteer_and_hub_operations():
     db_vol3.availability = False
     db.commit()
 
-    # Register Case 4. Since Vol 3 is unavailable, should remain Unassigned.
+    # Register Case 4. Since Vol 3 is unavailable, should remain OPEN.
     res = client.post("/api/volunteer-ops/cases", json={
         "citizen_id": c_medchal.id,
         "title": "Pension Support 2",
@@ -207,21 +214,21 @@ def test_volunteer_and_hub_operations():
     }, headers=headers_admin)
     assert res.status_code == 201, res.text
     case4 = res.json()
-    assert case4["status"] == "Unassigned"
+    assert case4["status"] == "OPEN"
     assert case4["volunteer_id"] is None
-    print("✓ Availability checks successful (case remains Unassigned when no volunteer is available)!")
+    print("✓ Availability checks successful (case remains OPEN when no volunteer is available)!")
 
     # 6. Test updates to case
     print("[Step 6] Testing case updates...")
     case1_id = case1["id"]
     res = client.put(f"/api/volunteer-ops/cases/{case1_id}", json={
-        "status": "Visit Scheduled",
+        "status": "IN_PROGRESS",
         "upcoming_visit_date": "2026-06-24T10:00:00+00:00",
         "follow_up_tasks": [{"task_name": "Aadhaar Xerox", "completed": True}]
       }, headers=headers_admin)
     assert res.status_code == 200, res.text
     updated_case1 = res.json()
-    assert updated_case1["status"] == "Visit Scheduled"
+    assert updated_case1["status"] == "IN_PROGRESS"
     assert updated_case1["follow_up_tasks"][0]["completed"] == True
     
     # Check that the citizen's timeline recorded a "Volunteer Visit" event!

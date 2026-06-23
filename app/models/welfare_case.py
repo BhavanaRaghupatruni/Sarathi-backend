@@ -12,7 +12,7 @@ class WelfareCase(Base):
     
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    status = Column(String, default="Unassigned", nullable=False) # Unassigned, Assigned, Visit Scheduled, Resolved
+    status = Column(String, default="OPEN", nullable=False) # OPEN, ASSIGNED, IN_PROGRESS, RESOLVED
     
     upcoming_visit_date = Column(DateTime(timezone=True), nullable=True)
     follow_up_tasks = Column(JSON, default=[], nullable=False) # e.g. [{"task_name": "Aadhaar verification", "completed": False}]
@@ -22,3 +22,4 @@ class WelfareCase(Base):
 
     citizen = relationship("CitizenProfile")
     volunteer = relationship("VolunteerProfile", back_populates="cases")
+    timeline = relationship("CaseTimeline", back_populates="case", cascade="all, delete-orphan", order_by="CaseTimeline.id.desc()")

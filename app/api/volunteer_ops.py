@@ -1,10 +1,13 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import os
+import shutil
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
-from app.models import Hub, VolunteerProfile, WelfareCase, CitizenProfile, CitizenTimeline, User
+from app.models import Hub, VolunteerProfile, WelfareCase, CitizenProfile, CitizenTimeline, User, CaseTimeline
 from app.schemas import (
     HubCreate,
     HubResponse,
@@ -12,7 +15,9 @@ from app.schemas import (
     VolunteerProfileResponse,
     WelfareCaseCreate,
     WelfareCaseUpdate,
-    WelfareCaseResponse
+    WelfareCaseResponse,
+    CaseTimelineNoteCreate,
+    CaseTimelineResponse
 )
 
 logger = logging.getLogger("uvicorn.error")
@@ -107,7 +112,7 @@ def create_case(payload: WelfareCaseCreate, db: Session = Depends(get_db)):
 
     # 1. Assignment Engine
     matched_vol_id = None
-    assigned_status = "Unassigned"
+    assigned_status = "OPEN"
     
     if citizen.district:
         # Query available volunteers in the same district
@@ -117,14 +122,14 @@ def create_case(payload: WelfareCaseCreate, db: Session = Depends(get_db)):
         ).all()
         
         if candidates:
-            # Find the volunteer with the lowest active cases (status != Resolved)
+            # Find the volunteer with the lowest active cases (status != RESOLVED)
             least_workload = None
             selected_vol = None
             
             for vol in candidates:
                 active_cases_count = db.query(WelfareCase).filter(
                     WelfareCase.volunteer_id == vol.id,
-                    WelfareCase.status != "Resolved"
+                    WelfareCase.status != "RESOLVED"
                 ).count()
                 
                 if least_workload is None or active_cases_count < least_workload:
@@ -133,7 +138,7 @@ def create_case(payload: WelfareCaseCreate, db: Session = Depends(get_db)):
             
             if selected_vol:
                 matched_vol_id = selected_vol.id
-                assigned_status = "Assigned"
+                assigned_status = "ASSIGNED"
 
     db_case = WelfareCase(
         citizen_id=payload.citizen_id,
@@ -149,7 +154,7 @@ def create_case(payload: WelfareCaseCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_case)
 
-    # 2. Add Timeline event to Citizen CRM timeline
+    # Add Timeline event to Citizen CRM timeline
     timeline_desc = f"New Case created: '{payload.title}'."
     if matched_vol_id:
         vol_user = db.query(User).join(VolunteerProfile).filter(VolunteerProfile.id == matched_vol_id).first()
@@ -163,6 +168,20 @@ def create_case(payload: WelfareCaseCreate, db: Session = Depends(get_db)):
         description=timeline_desc
     )
     db.add(timeline_event)
+    db.commit()
+
+    # Create first CaseTimeline entry
+    creation_timeline_desc = f"Case created. Status set to {db_case.status}."
+    if matched_vol_id:
+        vol_user = db.query(User).join(VolunteerProfile).filter(VolunteerProfile.id == matched_vol_id).first()
+        creation_timeline_desc += f" Automatically assigned to volunteer '{vol_user.username if vol_user else 'Unknown'}'."
+    
+    case_timeline_event = CaseTimeline(
+        case_id=db_case.id,
+        event_type="CREATION",
+        description=creation_timeline_desc
+    )
+    db.add(case_timeline_event)
     db.commit()
     db.refresh(db_case)
 
@@ -209,16 +228,16 @@ def update_case(case_id: int, payload: WelfareCaseUpdate, db: Session = Depends(
     event_type = None
 
     if payload.status and payload.status != old_status:
-        if payload.status == "Assigned":
+        if payload.status == "ASSIGNED":
             event_type = "Cases Created"
             vol_user = db.query(User).join(VolunteerProfile).filter(VolunteerProfile.id == db_case.volunteer_id).first()
             timeline_desc = f"Case '{db_case.title}' assigned to volunteer '{vol_user.username if vol_user else 'Unknown'}'."
-        elif payload.status == "Visit Scheduled":
+        elif payload.status == "IN_PROGRESS":
             event_type = "Volunteer Visit"
             timeline_desc = f"Home visit scheduled for case '{db_case.title}'."
             if db_case.upcoming_visit_date:
                 timeline_desc += f" Scheduled Date: {db_case.upcoming_visit_date.strftime('%Y-%m-%d %H:%M')}."
-        elif payload.status == "Resolved":
+        elif payload.status == "RESOLVED":
             event_type = "Resolutions"
             timeline_desc = f"Case '{db_case.title}' has been successfully resolved and closed."
 
@@ -234,6 +253,92 @@ def update_case(case_id: int, payload: WelfareCaseUpdate, db: Session = Depends(
         )
         db.add(timeline_event)
         db.commit()
-        db.refresh(db_case)
 
+    # Log status or update history in CaseTimeline
+    if payload.status and payload.status != old_status:
+        case_timeline_event = CaseTimeline(
+            case_id=db_case.id,
+            event_type="STATUS_CHANGE",
+            description=f"Status changed from {old_status} to {payload.status}."
+        )
+        db.add(case_timeline_event)
+        db.commit()
+    elif len(update_data) > 0:
+        updated_fields = ", ".join(update_data.keys())
+        case_timeline_event = CaseTimeline(
+            case_id=db_case.id,
+            event_type="UPDATE",
+            description=f"Case updated. Fields modified: {updated_fields}."
+        )
+        db.add(case_timeline_event)
+        db.commit()
+
+    db.refresh(db_case)
     return db_case
+
+@router.post("/cases/{case_id}/timeline/notes", response_model=CaseTimelineResponse, status_code=status.HTTP_201_CREATED)
+def add_case_note(case_id: int, payload: CaseTimelineNoteCreate, db: Session = Depends(get_db)):
+    """
+    Add a manual note/comment to the case timeline.
+    """
+    db_case = db.query(WelfareCase).filter(WelfareCase.id == case_id).first()
+    if not db_case:
+        raise HTTPException(status_code=404, detail="Welfare case not found.")
+
+    timeline_event = CaseTimeline(
+        case_id=case_id,
+        event_type="NOTE",
+        description="Volunteer added a note.",
+        note=payload.note
+    )
+    db.add(timeline_event)
+    db.commit()
+    db.refresh(timeline_event)
+    return timeline_event
+
+@router.post("/cases/{case_id}/timeline/attachments", response_model=CaseTimelineResponse, status_code=status.HTTP_201_CREATED)
+def upload_case_attachment(case_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Upload a file attachment to the case timeline.
+    """
+    db_case = db.query(WelfareCase).filter(WelfareCase.id == case_id).first()
+    if not db_case:
+        raise HTTPException(status_code=404, detail="Welfare case not found.")
+
+    # Create uploads directory if it doesn't exist
+    upload_dir = "uploads"
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+
+    # Secure the file name to prevent directory traversal
+    filename = f"{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    file_path = os.path.join(upload_dir, filename)
+
+    # Write the file locally
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        logger.error(f"Failed to save file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
+
+    attachment_url = f"/uploads/{filename}"
+
+    timeline_event = CaseTimeline(
+        case_id=case_id,
+        event_type="ATTACHMENT",
+        description=f"File uploaded: {file.filename}.",
+        attachment_url=attachment_url,
+        attachment_name=file.filename
+    )
+    db.add(timeline_event)
+    db.commit()
+    db.refresh(timeline_event)
+    return timeline_event
+
+@router.get("/cases/{case_id}/timeline", response_model=List[CaseTimelineResponse])
+def get_case_timeline(case_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch all timeline events for a welfare case.
+    """
+    return db.query(CaseTimeline).filter(CaseTimeline.case_id == case_id).order_by(CaseTimeline.id.desc()).all()
