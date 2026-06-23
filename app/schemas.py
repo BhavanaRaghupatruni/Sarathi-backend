@@ -314,3 +314,74 @@ class CitizenProfileResponse(BaseModel):
         from_attributes = True
 
 
+# --- Volunteer & Hub Operations Schemas ---
+
+class HubCreate(BaseModel):
+    name: str
+    hub_type: str  # "CENTRAL" or "LOCAL"
+    district: str
+    parent_hub_id: Optional[int] = None
+
+class HubResponse(BaseModel):
+    id: int
+    name: str
+    hub_type: str
+    district: str
+    parent_hub_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class VolunteerProfileCreate(BaseModel):
+    user_id: int
+    contact_phone: Optional[str] = None
+    district: str
+    availability: Optional[bool] = True
+    hub_id: Optional[int] = None
+
+class VolunteerProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    contact_phone: Optional[str] = None
+    district: str
+    availability: bool
+    hub_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class WelfareCaseCreate(BaseModel):
+    citizen_id: int
+    volunteer_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    status: Optional[str] = "Unassigned"
+    upcoming_visit_date: Optional[datetime] = None
+    follow_up_tasks: List[Dict[str, Any]] = []
+
+class WelfareCaseUpdate(BaseModel):
+    volunteer_id: Optional[int] = None
+    status: Optional[str] = None
+    upcoming_visit_date: Optional[datetime] = None
+    follow_up_tasks: Optional[List[Dict[str, Any]]] = None
+
+class WelfareCaseResponse(BaseModel):
+    id: int
+    citizen_id: int
+    citizen: CitizenProfileResponse
+    volunteer_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    status: str
+    upcoming_visit_date: Optional[datetime] = None
+    follow_up_tasks: List[Dict[str, Any]] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+

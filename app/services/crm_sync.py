@@ -1,8 +1,9 @@
 import logging
 from sqlalchemy.orm import Session
-from app.models import Survey, CitizenProfile, HouseholdProfile, CitizenTimeline
+from app.models import Survey, CitizenProfile, HouseholdProfile, CitizenTimeline, VolunteerProfile, WelfareCase, User
 
 logger = logging.getLogger("uvicorn.error")
+
 
 def sync_survey_to_crm(db: Session, survey: Survey) -> CitizenProfile:
     """
@@ -199,6 +200,71 @@ def sync_survey_to_crm(db: Session, survey: Survey) -> CitizenProfile:
             db.commit()
             
             logger.info(f"Sync: Successfully created Citizen Profile ID {db_citizen.id} and Household Profile ID {db_hh.id}.")
+
+        # 4. Trigger Automatic Case Assignment Engine if eligible for any schemes
+        applicable_schemes = data.get("applicableSchemes", [])
+        if applicable_schemes and db_citizen:
+            active_case = db.query(WelfareCase).filter(
+                WelfareCase.citizen_id == db_citizen.id,
+                WelfareCase.status != "Resolved"
+            ).first()
+            
+            if not active_case:
+                matched_vol_id = None
+                assigned_status = "Unassigned"
+                
+                if db_citizen.district:
+                    candidates = db.query(VolunteerProfile).filter(
+                        VolunteerProfile.district.ilike(db_citizen.district),
+                        VolunteerProfile.availability == True
+                    ).all()
+                    
+                    if candidates:
+                        least_workload = None
+                        selected_vol = None
+                        for vol in candidates:
+                            active_count = db.query(WelfareCase).filter(
+                                WelfareCase.volunteer_id == vol.id,
+                                WelfareCase.status != "Resolved"
+                            ).count()
+                            if least_workload is None or active_count < least_workload:
+                                least_workload = active_count
+                                selected_vol = vol
+                        if selected_vol:
+                            matched_vol_id = selected_vol.id
+                            assigned_status = "Assigned"
+                
+                scheme_title = applicable_schemes[0]
+                new_case = WelfareCase(
+                    citizen_id=db_citizen.id,
+                    volunteer_id=matched_vol_id,
+                    title=f"Welfare Support: {scheme_title}",
+                    description=f"Automated case registered for {db_citizen.name} who is eligible for {scheme_title}.",
+                    status=assigned_status,
+                    follow_up_tasks=[
+                        {"task_name": "Verify Aadhaar Proof", "completed": False},
+                        {"task_name": "Collect Income Certificate", "completed": False},
+                        {"task_name": "Fill Scheme Application Form", "completed": False}
+                    ]
+                )
+                db.add(new_case)
+                db.commit()
+                db.refresh(new_case)
+                
+                timeline_desc = f"Welfare Case created for '{scheme_title}'."
+                if matched_vol_id:
+                    vol_user = db.query(User).join(VolunteerProfile).filter(VolunteerProfile.id == matched_vol_id).first()
+                    timeline_desc += f" Automatically assigned to volunteer '{vol_user.username}' (District: {db_citizen.district})."
+                else:
+                    timeline_desc += " Case remains unassigned (No available volunteers in the district)."
+                    
+                e_case = CitizenTimeline(
+                    citizen_id=db_citizen.id,
+                    event_type="Cases Created",
+                    description=timeline_desc
+                )
+                db.add(e_case)
+                db.commit()
 
         return db_citizen
 

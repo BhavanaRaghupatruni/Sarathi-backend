@@ -148,4 +148,45 @@ def seed_database(db: Session):
             user.roles.append(target_role)
             db.commit()
 
+    # 4. Seed Hubs and Volunteer Profile for testing
+    from app.models.hub import Hub
+    from app.models.volunteer_profile import VolunteerProfile
+
+    # Central Hub
+    central_hub = db.query(Hub).filter(Hub.name == "Telangana Central Hub").first()
+    if not central_hub:
+        central_hub = Hub(name="Telangana Central Hub", hub_type="CENTRAL", district="Hyderabad")
+        db.add(central_hub)
+        db.commit()
+        db.refresh(central_hub)
+
+    # Local Hub
+    local_hub = db.query(Hub).filter(Hub.name == "Rangareddy Local Hub").first()
+    if not local_hub:
+        local_hub = Hub(
+            name="Rangareddy Local Hub", 
+            hub_type="LOCAL", 
+            district="Rangareddy", 
+            parent_hub_id=central_hub.id
+        )
+        db.add(local_hub)
+        db.commit()
+        db.refresh(local_hub)
+
+    # Volunteer profile for default 'volunteer' user
+    volunteer_user = db.query(User).filter(User.username == "volunteer").first()
+    if volunteer_user:
+        vol_profile = db.query(VolunteerProfile).filter(VolunteerProfile.user_id == volunteer_user.id).first()
+        if not vol_profile:
+            vol_profile = VolunteerProfile(
+                user_id=volunteer_user.id,
+                contact_phone="9988776655",
+                district="Rangareddy",
+                availability=True,
+                hub_id=local_hub.id
+            )
+            db.add(vol_profile)
+            db.commit()
+
     logger.info("Authentication & RBAC database seeding finished successfully.")
+

@@ -8,6 +8,9 @@ from app.models.user import User
 from app.models.household_profile import HouseholdProfile
 from app.models.citizen_profile import CitizenProfile
 from app.models.citizen_timeline import CitizenTimeline
+from app.models.hub import Hub
+from app.models.volunteer_profile import VolunteerProfile
+from app.models.welfare_case import WelfareCase
 
 __all__ = [
     "Survey",
@@ -21,5 +24,9 @@ __all__ = [
     "HouseholdProfile",
     "CitizenProfile",
     "CitizenTimeline",
+    "Hub",
+    "VolunteerProfile",
+    "WelfareCase",
 ]
+
 

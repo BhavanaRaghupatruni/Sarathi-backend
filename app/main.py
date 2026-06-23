@@ -16,6 +16,8 @@ from app.api.auth import router as auth_router
 from app.api.protected_routes import router as protected_router
 from app.api.crm import router as crm_router
 from app.services.crm_sync import sync_survey_to_crm
+from app.api.volunteer_ops import router as volunteer_ops_router
+
 
 
 import jwt
@@ -52,8 +54,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             required_roles = ["ADMIN"]
         elif path.startswith("/volunteers") or path.startswith("/api/volunteers"):
             required_roles = ["ADMIN", "CENTRAL_HUB", "LOCAL_HUB"]
-        elif path.startswith("/citizens") or path.startswith("/api/citizens"):
+        elif path.startswith("/citizens") or path.startswith("/api/citizens") or path.startswith("/api/volunteer-ops"):
             required_roles = ["ADMIN", "CENTRAL_HUB", "LOCAL_HUB", "VOLUNTEER"]
+
         elif path.startswith("/cases") or path.startswith("/api/cases"):
             required_roles = ["ADMIN", "CENTRAL_HUB", "LOCAL_HUB", "VOLUNTEER", "CITIZEN"]
 
@@ -103,6 +106,8 @@ app.include_router(auth_router)
 app.include_router(protected_router)
 app.include_router(api_router, tags=["RAG & Welfare Intelligence"])
 app.include_router(crm_router)
+app.include_router(volunteer_ops_router)
+
 
 
 
