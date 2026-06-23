@@ -169,6 +169,7 @@ class UrlIngest(BaseModel):
 class SchemeCreate(BaseModel):
     scheme_name: str
     state: str
+    department: Optional[str] = None
     category: str
     description: str
     benefits: Dict[str, Any]
@@ -176,11 +177,13 @@ class SchemeCreate(BaseModel):
     required_documents: List[str]
     application_process: str
     source_page: Optional[int] = 1
+    source_urls: Optional[List[str]] = None
     verification_status: Optional[str] = "UNVERIFIED"
 
 class SchemeUpdate(BaseModel):
     scheme_name: Optional[str] = None
     state: Optional[str] = None
+    department: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
     benefits: Optional[Dict[str, Any]] = None
@@ -188,7 +191,57 @@ class SchemeUpdate(BaseModel):
     required_documents: Optional[List[str]] = None
     application_process: Optional[str] = None
     source_page: Optional[int] = None
+    source_urls: Optional[List[str]] = None
     verification_status: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_archived: Optional[bool] = None
+    version_source: Optional[str] = None
+    change_summary: Optional[str] = None
+
+class SchemeResponse(BaseModel):
+    id: Any
+    document_id: Optional[Any] = None
+    scheme_name: str
+    state: str
+    department: Optional[str] = None
+    category: str
+    description: str
+    benefits: Dict[str, Any]
+    eligibility_rules: Dict[str, Any]
+    required_documents: List[str]
+    application_process: str
+    source_page: Optional[int] = None
+    source_urls: Optional[List[str]] = None
+    verification_status: str
+    is_active: bool
+    is_archived: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SchemeVersionHistoryResponse(BaseModel):
+    id: Any
+    scheme_id: Any
+    version: int
+    scheme_name: str
+    state: str
+    department: Optional[str] = None
+    category: str
+    description: str
+    benefits: Dict[str, Any]
+    eligibility_rules: Dict[str, Any]
+    required_documents: List[str]
+    application_process: str
+    source_urls: Optional[List[str]] = None
+    version_source: Optional[str] = None
+    change_summary: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class ChatMessage(BaseModel):
     role: str

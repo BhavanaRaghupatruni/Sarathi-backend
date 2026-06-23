@@ -1,6 +1,6 @@
 from app.models.survey import Survey
 from app.models.document import KnowledgeDocument
-from app.models.scheme import SchemeRegistry, SchemeChunk
+from app.models.scheme import SchemeRegistry, SchemeChunk, SchemeVersionHistory
 from app.models.chat_log import ChatLog
 from app.models.permission import Permission
 from app.models.role import Role
@@ -27,6 +27,8 @@ __all__ = [
     "Hub",
     "VolunteerProfile",
     "WelfareCase",
+    "SchemeVersionHistory",
 ]
+
 
 

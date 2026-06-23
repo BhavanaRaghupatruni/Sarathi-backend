@@ -12,13 +12,15 @@ logger = logging.getLogger("uvicorn.error")
 from app.config import settings
 from app.database import get_db, SessionLocal
 from app.models.document import KnowledgeDocument
-from app.models.scheme import SchemeRegistry, SchemeChunk
+from app.models.scheme import SchemeRegistry, SchemeChunk, SchemeVersionHistory
 from app.models.chat_log import ChatLog
 from app.schemas import (
     RawTextIngest,
     UrlIngest,
     SchemeCreate,
     SchemeUpdate,
+    SchemeResponse,
+    SchemeVersionHistoryResponse,
     ChatRequest,
     ChatResponse,
     EligibleSchemeRecommendation
@@ -265,7 +267,7 @@ def delete_document(id: str, db: Session = Depends(get_db)):
 
 # --- 2. ADMIN CRUD SCHEME REGISTRY ENDPOINTS ---
 
-@router.post("/admin/schemes", status_code=status.HTTP_201_CREATED)
+@router.post("/admin/schemes", response_model=SchemeResponse, status_code=status.HTTP_201_CREATED)
 def create_scheme(payload: SchemeCreate, db: Session = Depends(get_db)):
     """
     Allows administrator to manually register a new welfare scheme.
@@ -276,13 +278,39 @@ def create_scheme(payload: SchemeCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Scheme name already registered.")
         
     scheme = SchemeRegistry(**payload.model_dump())
+    scheme.version = 1
+    scheme.is_active = True
+    scheme.is_archived = False
+    
     db.add(scheme)
     db.commit()
     db.refresh(scheme)
+    
+    # Create version history record
+    history = SchemeVersionHistory(
+        scheme_id=scheme.id,
+        version=scheme.version,
+        scheme_name=scheme.scheme_name,
+        state=scheme.state,
+        department=scheme.department,
+        category=scheme.category,
+        description=scheme.description,
+        benefits=scheme.benefits,
+        eligibility_rules=scheme.eligibility_rules,
+        required_documents=scheme.required_documents,
+        application_process=scheme.application_process,
+        source_urls=scheme.source_urls,
+        version_source="manual edit",
+        change_summary="Initial registration"
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(scheme)
+    
     return scheme
 
 
-@router.get("/admin/schemes")
+@router.get("/admin/schemes", response_model=List[SchemeResponse])
 def list_schemes(db: Session = Depends(get_db)):
     """
     Lists all registered schemes.
@@ -290,7 +318,7 @@ def list_schemes(db: Session = Depends(get_db)):
     return db.query(SchemeRegistry).all()
 
 
-@router.get("/admin/schemes/{id}")
+@router.get("/admin/schemes/{id}", response_model=SchemeResponse)
 def get_scheme(id: str, db: Session = Depends(get_db)):
     """
     Fetches details for a single scheme.
@@ -303,7 +331,7 @@ def get_scheme(id: str, db: Session = Depends(get_db)):
     return scheme
 
 
-@router.put("/admin/schemes/{id}")
+@router.put("/admin/schemes/{id}", response_model=SchemeResponse)
 def update_scheme(id: str, payload: SchemeUpdate, db: Session = Depends(get_db)):
     """
     Allows admin to modify details and eligibility rules of a registered scheme.
@@ -315,12 +343,127 @@ def update_scheme(id: str, payload: SchemeUpdate, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Scheme not found")
         
     update_data = payload.model_dump(exclude_unset=True)
-    for k, v in update_data.items():
-        setattr(scheme, k, v)
+    
+    version_source = update_data.pop("version_source", "manual edit")
+    change_summary = update_data.pop("change_summary", "Scheme updated")
+    
+    if update_data:
+        for k, v in update_data.items():
+            setattr(scheme, k, v)
+            
+        scheme.version += 1
+        db.commit()
+        db.refresh(scheme)
         
+        # Save version history log
+        history = SchemeVersionHistory(
+            scheme_id=scheme.id,
+            version=scheme.version,
+            scheme_name=scheme.scheme_name,
+            state=scheme.state,
+            department=scheme.department,
+            category=scheme.category,
+            description=scheme.description,
+            benefits=scheme.benefits,
+            eligibility_rules=scheme.eligibility_rules,
+            required_documents=scheme.required_documents,
+            application_process=scheme.application_process,
+            source_urls=scheme.source_urls,
+            version_source=version_source,
+            change_summary=change_summary
+        )
+        db.add(history)
+        db.commit()
+        db.refresh(scheme)
+        
+    return scheme
+
+
+@router.put("/admin/schemes/{id}/disable", response_model=SchemeResponse)
+def disable_scheme(id: str, db: Session = Depends(get_db)):
+    """
+    Disable a scheme.
+    """
+    is_postgres = (db.bind.dialect.name == "postgresql")
+    query_id = uuid.UUID(id) if is_postgres else str(id)
+    scheme = db.query(SchemeRegistry).filter(SchemeRegistry.id == query_id).first()
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+    
+    scheme.is_active = False
     db.commit()
     db.refresh(scheme)
     return scheme
+
+
+@router.put("/admin/schemes/{id}/enable", response_model=SchemeResponse)
+def enable_scheme(id: str, db: Session = Depends(get_db)):
+    """
+    Enable a scheme.
+    """
+    is_postgres = (db.bind.dialect.name == "postgresql")
+    query_id = uuid.UUID(id) if is_postgres else str(id)
+    scheme = db.query(SchemeRegistry).filter(SchemeRegistry.id == query_id).first()
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+    
+    scheme.is_active = True
+    db.commit()
+    db.refresh(scheme)
+    return scheme
+
+
+@router.put("/admin/schemes/{id}/archive", response_model=SchemeResponse)
+def archive_scheme(id: str, db: Session = Depends(get_db)):
+    """
+    Archive a scheme.
+    """
+    is_postgres = (db.bind.dialect.name == "postgresql")
+    query_id = uuid.UUID(id) if is_postgres else str(id)
+    scheme = db.query(SchemeRegistry).filter(SchemeRegistry.id == query_id).first()
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+    
+    scheme.is_archived = True
+    db.commit()
+    db.refresh(scheme)
+    return scheme
+
+
+@router.put("/admin/schemes/{id}/unarchive", response_model=SchemeResponse)
+def unarchive_scheme(id: str, db: Session = Depends(get_db)):
+    """
+    Unarchive a scheme.
+    """
+    is_postgres = (db.bind.dialect.name == "postgresql")
+    query_id = uuid.UUID(id) if is_postgres else str(id)
+    scheme = db.query(SchemeRegistry).filter(SchemeRegistry.id == query_id).first()
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+    
+    scheme.is_archived = False
+    db.commit()
+    db.refresh(scheme)
+    return scheme
+
+
+@router.get("/admin/schemes/{id}/history", response_model=List[SchemeVersionHistoryResponse])
+def get_scheme_history(id: str, db: Session = Depends(get_db)):
+    """
+    Returns the version history for a given scheme, sorted by version descending.
+    """
+    is_postgres = (db.bind.dialect.name == "postgresql")
+    query_id = uuid.UUID(id) if is_postgres else str(id)
+    
+    scheme = db.query(SchemeRegistry).filter(SchemeRegistry.id == query_id).first()
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+        
+    history_records = db.query(SchemeVersionHistory).filter(
+        SchemeVersionHistory.scheme_id == query_id
+    ).order_by(SchemeVersionHistory.version.desc()).all()
+    
+    return history_records
 
 
 @router.delete("/admin/schemes/{id}", status_code=status.HTTP_204_NO_CONTENT)
