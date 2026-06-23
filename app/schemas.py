@@ -215,3 +215,102 @@ class ChatResponse(BaseModel):
     recommendations: List[EligibleSchemeRecommendation]
     retrieved_sources: List[Dict[str, Any]]
 
+
+# --- Citizen CRM Schemas ---
+
+class CitizenTimelineCreate(BaseModel):
+    event_type: str
+    description: Optional[str] = None
+    event_date: Optional[datetime] = None
+
+class CitizenTimelineResponse(BaseModel):
+    id: int
+    citizen_id: int
+    event_type: str
+    description: Optional[str] = None
+    event_date: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class HouseholdProfileCreate(BaseModel):
+    income: Optional[str] = None
+    housing_status: Optional[str] = None
+    land_ownership: Optional[str] = None
+    occupation: Optional[str] = None
+    poverty_classification: Optional[str] = None
+    family_members: List[Dict[str, Any]] = []
+
+class HouseholdProfileUpdate(BaseModel):
+    income: Optional[str] = None
+    housing_status: Optional[str] = None
+    land_ownership: Optional[str] = None
+    occupation: Optional[str] = None
+    poverty_classification: Optional[str] = None
+    family_members: Optional[List[Dict[str, Any]]] = None
+
+class HouseholdProfileResponse(BaseModel):
+    id: int
+    income: Optional[str] = None
+    housing_status: Optional[str] = None
+    land_ownership: Optional[str] = None
+    occupation: Optional[str] = None
+    poverty_classification: Optional[str] = None
+    family_members: List[Dict[str, Any]] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CitizenProfileCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    aadhaar_reference: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    address: Optional[str] = None
+    state: Optional[str] = None
+    district: Optional[str] = None
+    mandal: Optional[str] = None
+    village: Optional[str] = None
+    household_id: Optional[int] = None
+    household: Optional[HouseholdProfileCreate] = None
+
+class CitizenProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    aadhaar_reference: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    address: Optional[str] = None
+    state: Optional[str] = None
+    district: Optional[str] = None
+    mandal: Optional[str] = None
+    village: Optional[str] = None
+    household_id: Optional[int] = None
+    household: Optional[HouseholdProfileUpdate] = None
+
+class CitizenProfileResponse(BaseModel):
+    id: int
+    name: str
+    phone: Optional[str] = None
+    aadhaar_reference: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    address: Optional[str] = None
+    state: Optional[str] = None
+    district: Optional[str] = None
+    mandal: Optional[str] = None
+    village: Optional[str] = None
+    household_id: Optional[int] = None
+    household: Optional[HouseholdProfileResponse] = None
+    timeline: List[CitizenTimelineResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+

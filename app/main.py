@@ -14,6 +14,9 @@ from app.api.routes import router as api_router
 from app.services.auth import seed_database
 from app.api.auth import router as auth_router
 from app.api.protected_routes import router as protected_router
+from app.api.crm import router as crm_router
+from app.services.crm_sync import sync_survey_to_crm
+
 
 import jwt
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -99,6 +102,8 @@ app.add_middleware(AuthorizationMiddleware)
 app.include_router(auth_router)
 app.include_router(protected_router)
 app.include_router(api_router, tags=["RAG & Welfare Intelligence"])
+app.include_router(crm_router)
+
 
 
 # CORS middleware configuration
@@ -156,6 +161,15 @@ def submit_survey(payload: SurveyCreate, db: Session = Depends(get_db)):
         db.add(db_survey)
         db.commit()
         db.refresh(db_survey)
+        
+        # Synchronize survey with NGO Citizen Registry CRM
+        try:
+            sync_survey_to_crm(db, db_survey)
+        except Exception as sync_err:
+            import logging
+            logger = logging.getLogger("uvicorn.error")
+            logger.error(f"Failed to auto-sync survey to CRM: {sync_err}")
+
         return db_survey
     except Exception as e:
         db.rollback()
